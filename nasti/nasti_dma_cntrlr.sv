@@ -7,8 +7,8 @@ module dma_ctrlr # (
 
     // From CPU to DM CTRLR
     input direction, // 0: a -> b, 1: b -> a
-    input [ADDR_WIDTH-1:0] from_addr,
-    input [ADDR_WIDTH-1:0] to_addr,
+    input [ADDR_WIDTH-1:0] src_addr,
+    input [ADDR_WIDTH-1:0] dest_addr,
     input [ADDR_WIDTH-1:0] length,
     input cpu_en,
 
@@ -16,8 +16,8 @@ module dma_ctrlr # (
     output logic busy,
 
     // From DM CTRLR to DM
-    output logic [ADDR_WIDTH-1:0] from_addr_latch,
-    output logic [ADDR_WIDTH-1:0] to_addr_latch,
+    output logic [ADDR_WIDTH-1:0] src_addr_latch,
+    output logic [ADDR_WIDTH-1:0] dest_addr_latch,
     output logic [ADDR_WIDTH-1:0] length_latch,
     output logic dm_en_a, // a -> b
     output logic dm_en_b, // b -> a
@@ -38,8 +38,8 @@ module dma_ctrlr # (
         else if (!dm_en_a && !dm_en_b) begin
             if (cpu_en) begin 
                 // PREP state
-                from_addr_latch <= from_addr;
-                to_addr_latch <= to_addr;
+                src_addr_latch <= src_addr;
+                dest_addr_latch <= dest_addr;
                 length_latch <= length;
 
                 if (!direction) begin 
