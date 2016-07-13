@@ -40,7 +40,6 @@ module nasti_data_mover # (
    //
    // assign dest.ar_valid = 0;
    // assign dest.r_ready = 0;
-   // assign dest.b_ready = 0;
 
    // Connect dest.w to src.r directly
    // Note that a read error is not considered here
@@ -67,6 +66,10 @@ module nasti_data_mover # (
       if (!aresetn) begin
          en_latch <= 0;
          done <= 1;
+
+         src.ar_valid <= 0;
+         src.aw_valid <= 0;
+         dest.b_ready <= 0;
       end
       else if (!en_latch) begin
          if (en) begin
