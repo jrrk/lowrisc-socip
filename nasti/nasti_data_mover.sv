@@ -90,7 +90,7 @@ module nasti_data_mover # (
                dest.aw_addr  <= {dest_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], 3'b0};
                dest.aw_valid <= 1;
 
-               if ((length >> ADDR_SHIFT) > 256) begin
+               if ((length_latch >> ADDR_SHIFT) > 256) begin
                   // Max burst length is 256
                   src.ar_len     <= 255;
                   dest.aw_len    <= 255;
