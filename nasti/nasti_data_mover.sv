@@ -5,13 +5,14 @@ module nasti_data_mover # (
 ) (
    input  aclk,
    input  aresetn,
-   nasti_channel.master src,
-   nasti_channel.master dest,
-   input  [ADDR_WIDTH-1:0] src_addr,
-   input  [ADDR_WIDTH-1:0] dest_addr,
-   input  [ADDR_WIDTH-1:0] length,
-   input  en,
-   output logic done
+   // Do not use modport here, we are not using all of master connections
+   nasti_channel src,
+   nasti_channel dest,
+   input  [ADDR_WIDTH-1:0] r_src,
+   input  [ADDR_WIDTH-1:0] r_dest,
+   input  [ADDR_WIDTH-1:0] r_len,
+   input  r_valid,
+   output logic r_ready
 );
 
    localparam ADDR_SHIFT = $clog2(DATA_WIDTH / 8);
@@ -52,57 +53,57 @@ module nasti_data_mover # (
 
    // Once the task is started, these values shouldn't be changed from outside the module,
    // so latch it
-   logic [63:0] src_addr_latch, dest_addr_latch, length_latch;
-   logic en_latch;
+   logic [63:0] src_addr, dest_addr, length;
 
    logic state_addr, state_wait, state_ready;
    logic src_ready, dest_ready;
 
    // Whether address will be ready for next cycle
-   logic src_to_be_ready, dest_to_be_ready;
-   always_comb src_to_be_ready = src.ar_ready & src.ar_valid;
-   always_comb dest_to_be_ready = dest.aw_ready & dest.aw_valid;
+   logic src_ar_fire, dest_aw_fire;
+   assign src_ar_fire = src.ar_ready & src.ar_valid;
+   assign dest_aw_fire = dest.aw_ready & dest.aw_valid;
 
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
-         en_latch <= 0;
-         done <= 1;
+         r_ready <= 1;
 
          src.ar_valid <= 0;
-         src.aw_valid <= 0;
+         dest.aw_valid <= 0;
          dest.b_ready <= 0;
       end
-      else if (!en_latch) begin
-         if (en) begin
-            // Latch input
-            state_addr     <= 1;
-            en_latch    <= 1;
-            src_addr_latch <= src_addr;
-            dest_addr_latch <= dest_addr;
-            length_latch   <= length;
-            done        <= 0;
+      else if (r_ready) begin
+         if (r_valid) begin
+            assert((r_src  & (DATA_WIDTH - 1)) == 0) else $error("Data mover request must be aligned");
+            assert((r_dest & (DATA_WIDTH - 1)) == 0) else $error("Data mover request must be aligned");
+            assert((r_len  & (DATA_WIDTH - 1)) == 0) else $error("Data mover request must be aligned");
+
+            state_addr <= 1;
+            src_addr   <= {r_src [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+            dest_addr  <= {r_dest[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+            length     <= {r_len [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+            r_ready    <= 0;
          end
       end
-      else if (en_latch) begin
+      else begin
          case (1'b1)
             state_addr: begin
-               src.ar_addr   <= {src_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+               src.ar_addr   <= src_addr;
                src.ar_valid  <= 1;
-               dest.aw_addr  <= {dest_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+               dest.aw_addr  <= dest_addr;
                dest.aw_valid <= 1;
 
-               if ((length_latch >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
+               if ((length >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
                   // Max burst length is 256
                   src.ar_len     <= MAX_BURST_LENGTH - 1;
                   dest.aw_len    <= MAX_BURST_LENGTH - 1;
-                  length_latch   <= length_latch - (MAX_BURST_LENGTH << ADDR_SHIFT);
-                  src_addr_latch <= src_addr_latch + (MAX_BURST_LENGTH << ADDR_SHIFT);
-                  dest_addr_latch <= dest_addr_latch + (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  length         <= length    - (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  src_addr       <= src_addr  + (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  dest_addr      <= dest_addr + (MAX_BURST_LENGTH << ADDR_SHIFT);
                end
                else begin
-                  src.ar_len   <= (length_latch >> ADDR_SHIFT) -1;
-                  dest.aw_len  <= (length_latch >> ADDR_SHIFT) -1;
-                  length_latch <= 0;
+                  src.ar_len   <= (length >> ADDR_SHIFT) - 1;
+                  dest.aw_len  <= (length >> ADDR_SHIFT) - 1;
+                  length       <= 0;
                end
 
                src_ready <= 0;
@@ -113,15 +114,15 @@ module nasti_data_mover # (
                state_wait <= 1;
             end
             state_wait: begin
-               if (src_to_be_ready) begin
+               if (src_ar_fire) begin
                   src.ar_valid <= 0;
                   src_ready    <= 1;
                end
-               if (dest_to_be_ready) begin
+               if (dest_aw_fire) begin
                   dest.aw_valid <= 0;
                   dest_ready    <= 1;
                end
-               if ((src_ready || src_to_be_ready) && (dest_ready || dest_to_be_ready)) begin
+               if ((src_ready || src_ar_fire) && (dest_ready || dest_aw_fire)) begin
                   state_wait   <= 0;
                   state_ready  <= 1;
                   dest.b_ready <= 1;
@@ -130,9 +131,8 @@ module nasti_data_mover # (
             state_ready: begin
                if (dest.b_valid) begin
                   dest.b_ready <= 0;
-                  if (length_latch == 0) begin
-                     en_latch <= 0;
-                     done   <= 1;
+                  if (length == 0) begin
+                     r_ready <= 1;
                   end
                   else begin
                      state_ready <= 0;
