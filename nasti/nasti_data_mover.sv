@@ -1,6 +1,7 @@
 module nasti_data_mover # (
    parameter ADDR_WIDTH = 64,
-   parameter DATA_WIDTH = 64
+   parameter DATA_WIDTH = 64,
+   parameter MAX_BURST_LENGTH = 256
 ) (
    input  aclk,
    input  aresetn,
@@ -85,22 +86,22 @@ module nasti_data_mover # (
       else if (en_latch) begin
          case (1'b1)
             state_addr: begin
-               src.ar_addr   <= {src_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], 3'b0};
+               src.ar_addr   <= {src_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
                src.ar_valid  <= 1;
-               dest.aw_addr  <= {dest_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], 3'b0};
+               dest.aw_addr  <= {dest_addr_latch[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
                dest.aw_valid <= 1;
 
-               if ((length_latch >> ADDR_SHIFT) > 256) begin
+               if ((length_latch >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
                   // Max burst length is 256
-                  src.ar_len     <= 255;
-                  dest.aw_len    <= 255;
-                  length_latch   <= length_latch - (256 << ADDR_SHIFT);
-                  src_addr_latch <= src_addr_latch + (256 << ADDR_SHIFT);
-                  dest_addr_latch <= dest_addr_latch + (256 << ADDR_SHIFT);
+                  src.ar_len     <= MAX_BURST_LENGTH - 1;
+                  dest.aw_len    <= MAX_BURST_LENGTH - 1;
+                  length_latch   <= length_latch - (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  src_addr_latch <= src_addr_latch + (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  dest_addr_latch <= dest_addr_latch + (MAX_BURST_LENGTH << ADDR_SHIFT);
                end
                else begin
-                  src.ar_len   <= (length >> ADDR_SHIFT) -1;
-                  dest.aw_len  <= (length >> ADDR_SHIFT) -1;
+                  src.ar_len   <= (length_latch >> ADDR_SHIFT) -1;
+                  dest.aw_len  <= (length_latch >> ADDR_SHIFT) -1;
                   length_latch <= 0;
                end
 
