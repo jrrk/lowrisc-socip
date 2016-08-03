@@ -1,18 +1,16 @@
 module nasti_stream_mux # (
    N_PORT = 1,                 // number of nasti stream ports
-   SELECT_WIDTH = $clog2(N_PORT)
+   DEST_WIDTH = $clog2(N_PORT),
+   DEST_ID = 0
 ) (
    input aclk,
    input aresetn,
    nasti_stream_channel.slave  master,
-   nasti_stream_channel.master slave,
-
-   input enable,
-   input [SELECT_WIDTH-1:0] select
+   nasti_stream_channel.master slave
 );
 
 logic enable_latch;
-logic [SELECT_WIDTH-1:0] select_latch;
+logic [DEST_WIDTH-1:0] select_latch;
 
 always_ff @(posedge aclk or negedge aresetn) begin
    if (!aresetn) begin
@@ -21,9 +19,12 @@ always_ff @(posedge aclk or negedge aresetn) begin
    end
    else begin
       if (!enable_latch) begin
-         if (enable) begin
-            enable_latch <= enable;
-            select_latch <= select;
+         foreach (master.t_valid[i]) begin
+            if (master.t_valid[i] && master.t_dest[i] == DEST_ID) begin
+               enable_latch <= 1;
+               select_latch <= i;
+               break;
+            end
          end
       end
       else begin
