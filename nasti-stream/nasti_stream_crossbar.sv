@@ -6,15 +6,15 @@ module nasti_stream_connector # (
    nasti_stream_channel slave
 );
 
-assign slave .t_valid[IDX_SLAVE ] = master.t_valid[IDX_MASTER];
-assign slave .t_data [IDX_SLAVE ] = master.t_data [IDX_MASTER];
-assign slave .t_strb [IDX_SLAVE ] = master.t_strb [IDX_MASTER];
-assign slave .t_keep [IDX_SLAVE ] = master.t_keep [IDX_MASTER];
-assign slave .t_last [IDX_SLAVE ] = master.t_last [IDX_MASTER];
-assign slave .t_id   [IDX_SLAVE ] = master.t_id   [IDX_MASTER];
-assign slave .t_dest [IDX_SLAVE ] = master.t_dest [IDX_MASTER];
-assign slave .t_user [IDX_SLAVE ] = master.t_user [IDX_MASTER];
-assign master.t_ready[IDX_MASTER] = slave .t_ready[IDX_SLAVE ];
+assign slave.t_valid [IDX_SLAVE]  = master.t_valid[IDX_MASTER];
+assign slave.t_data  [IDX_SLAVE]  = master.t_data [IDX_MASTER];
+assign slave.t_strb  [IDX_SLAVE]  = master.t_strb [IDX_MASTER];
+assign slave.t_keep  [IDX_SLAVE]  = master.t_keep [IDX_MASTER];
+assign slave.t_last  [IDX_SLAVE]  = master.t_last [IDX_MASTER];
+assign slave.t_id    [IDX_SLAVE]  = master.t_id   [IDX_MASTER];
+assign slave.t_dest  [IDX_SLAVE]  = master.t_dest [IDX_MASTER];
+assign slave.t_user  [IDX_SLAVE]  = master.t_user [IDX_MASTER];
+assign master.t_ready[IDX_MASTER] = slave.t_ready [IDX_SLAVE];
 
 endmodule
 
