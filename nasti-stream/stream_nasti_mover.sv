@@ -201,7 +201,7 @@ module stream_nasti_mover # (
                end
             end
             default:
-               $error("NASTI-Stream to NASTI Data Mover: Unexpected state");
+               assert(0) else $error("NASTI-Stream to NASTI Data Mover: Unexpected state");
          endcase
       end
    end
