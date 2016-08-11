@@ -23,11 +23,12 @@ module arbiter_rr
 
    assign mask[0] = 1'b0;
    assign req_ext = {req, req};
-   assign p_ext = p;
+   assign p_ext[0 +: N] = p;
+   assign p_ext[N +: N] = 'd0;
 
 `ifdef VERILATOR
    generate
-      assign p_or[0] = 0;
+      assign p_or[0] = 'd0;
       assign req_and = req_ext & p_or;
       for(i=1; i<2*N; i++) begin
          assign p_or[i] = |p_ext[i-1:0];

@@ -78,7 +78,7 @@ module nasti_lite_writer
    typedef struct packed unsigned {
       logic [ID_WIDTH-1:0]   id;
       logic [ADDR_WIDTH-1:0] addr;
-      logic [8:0]            len;
+      logic [7:0]            len;
       logic [2:0]            size;
       logic [2:0]            prot;
       logic [3:0]            qos;
@@ -124,16 +124,16 @@ module nasti_lite_writer
       return nasti_shrink(req) ? LITE_DATA_WIDTH/8 : nasti_step_size(req);
    endfunction // lite_step_size
 
-   function int unsigned lite_packet_ratio(input NastiReq req);
-      return nasti_shrink(req) ? 8'd1 << (req.size - LITE_W_BITS) : 1;
+   function logic [BUF_LEN_BITS:0] lite_packet_ratio(input NastiReq req);
+      return nasti_shrink(req) ? 'd1 << int'(req.size) - LITE_W_BITS : 'd1;
    endfunction // lite_packet_ratio
 
-   function int unsigned lite_packet_size(input NastiReq req);
-      return lite_packet_ratio(req) * (req.len + 1);
+   function logic [BUF_LEN_BITS+8:0] lite_packet_size(input NastiReq req);
+      return lite_packet_ratio(req) * (int'(req.len) + 'd1);
    endfunction // lite_packet_size
 
-   function int unsigned incr(input int unsigned cnt, step, ub);
-      return cnt >= ub - step ? 0 : cnt + step;
+   function logic [MAX_TRAN_BITS-1:0] incr(input logic [MAX_TRAN_BITS-1:0] cnt, int unsigned step, ub);
+      return int'(cnt) >= ub - step ? 0 : (MAX_TRAN_BITS)'(int'(cnt) + step);
    endfunction // incr
 
    // buffer requests
@@ -162,7 +162,7 @@ module nasti_lite_writer
      if(!rstn)
        aw_buf_rp <= 0;
      else if(aw_buf_valid && (xact_finish || !xact_req_valid))
-       aw_buf_rp <= incr(aw_buf_rp, 1, MAX_TRANSACTION);
+       aw_buf_rp <= incr(aw_buf_rp, 'd1, MAX_TRANSACTION);
 
    assign nasti_aw_ready = !aw_buf_full;
    assign xact_finish = nasti_b_valid && nasti_b_ready;
@@ -260,14 +260,14 @@ module nasti_lite_writer
    assign lite_aw_user = xact_req.user;
    assign lite_aw_valid = lite_aw_data_valid && !lite_aw_send && !lite_aw_bypass;
 
-   assign lite_w_rp = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? lite_aw_addr[NASTI_W_BITS-1:LITE_W_BITS] : 0;
+   assign lite_w_rp = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? int'(lite_aw_addr[NASTI_W_BITS-1:LITE_W_BITS]) : 'd0;
    assign lite_w_data = xact_data_vec[lite_w_rp];
    assign lite_w_strb = xact_strb_vec[lite_w_rp];
    assign lite_w_user = xact_user;
    assign lite_w_valid = lite_aw_data_valid && !lite_w_send && !lite_aw_bypass;
 
    assign lite_b_addr = xact_req.addr + xact_b_cnt * lite_step_size(xact_req);
-   assign lite_b_rp = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? lite_b_addr[NASTI_W_BITS-1:LITE_W_BITS] : 0;
+   assign lite_b_rp = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? int'(lite_b_addr[NASTI_W_BITS-1:LITE_W_BITS]) : 'd0;
    assign lite_b_strb = xact_strb_vec[lite_b_rp];
    assign lite_b_ready = lite_b_data_valid;
 

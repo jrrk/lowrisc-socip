@@ -17,6 +17,9 @@ module nasti_mux
     nasti_channel.master m
     );
 
+   localparam LOG_W_MAX = (W_MAX > 1) ? $clog2(W_MAX) : 1;
+   localparam LOG_R_MAX = (R_MAX > 1) ? $clog2(R_MAX) : 1;
+
    // dummy
    genvar i;
 
@@ -28,28 +31,28 @@ module nasti_mux
    logic [R_MAX-1:0][2:0]             read_vec_port;
    logic [R_MAX-1:0]                  read_vec_valid;
 
-   logic [$clog2(W_MAX)-1:0] write_wp;
-   logic [$clog2(R_MAX)-1:0] read_wp;
+   logic [LOG_W_MAX-1:0] write_wp;
+   logic [LOG_R_MAX-1:0] read_wp;
    logic write_full, read_full;
 
    assign write_full = &write_vec_valid;
    assign read_full = &read_vec_valid;
 
-   function logic[$clog2(W_MAX)-1:0] get_write_wp();
+   function logic[LOG_W_MAX-1:0] get_write_wp();
       automatic int i;
       for(i=0; i<W_MAX; i++)
         if(!write_vec_valid[i])
           return i;
-      return 0;
+      return 'd0;
    endfunction //
    assign write_wp = get_write_wp();
 
-   function logic[$clog2(R_MAX)-1:0] get_read_wp();
+   function logic[LOG_R_MAX-1:0] get_read_wp();
       automatic int i;
       for(i=0; i<R_MAX; i++)
         if(!read_vec_valid[i])
           return i;
-      return 0;
+      return 'd0;
    endfunction //
    assign read_wp = get_read_wp();
 
@@ -57,21 +60,21 @@ module nasti_mux
       automatic int i;
       for(i=0; i<8; i++)
         if(dat[i]) return i;
-      return 0;
+      return 'd0;
    endfunction // toInt
       
-   function logic [$clog2(W_MAX)-1:0] toInt_w (logic [W_MAX-1:0] dat);
+   function logic [LOG_W_MAX-1:0] toInt_w (logic [W_MAX-1:0] dat);
       automatic int i;
       for(i=0; i<W_MAX; i++)
         if(dat[i]) return i;
-      return 0;
+      return 'd0;
    endfunction // toInt
 
-   function logic [$clog2(R_MAX)-1:0] toInt_r (logic [R_MAX:0] dat);
+   function logic [LOG_R_MAX-1:0] toInt_r (logic [R_MAX-1:0] dat);
       automatic int i;
       for(i=0; i<R_MAX; i++)
         if(dat[i]) return i;
-      return 0;
+      return 'd0;
    endfunction // toInt
 
    // AW/W/B channels
@@ -120,7 +123,7 @@ module nasti_mux
    assign s.w_ready    = m.w_ready ? (1 << aw_port_sel) : 0;
 
    logic [W_MAX-1:0]          write_match;
-   logic [$clog2(W_MAX)-1:0]  write_match_index;
+   logic [LOG_W_MAX-1:0]  write_match_index;
 
    generate
       for(i=0; i<W_MAX; i++)
@@ -181,7 +184,7 @@ module nasti_mux
    assign s.ar_ready   = m.ar_ready ? (1 << ar_port_sel) : 0;
 
    logic [R_MAX-1:0]          read_match;
-   logic [$clog2(R_MAX)-1:0]  read_match_index;
+   logic [LOG_R_MAX-1:0]  read_match_index;
 
    generate
       for(i=0; i<R_MAX; i++)

@@ -67,7 +67,7 @@ module nasti_lite_reader
    typedef struct packed unsigned {
       logic [ID_WIDTH-1:0]   id;
       logic [ADDR_WIDTH-1:0] addr;
-      logic [8:0]            len;
+      logic [7:0]            len;
       logic [2:0]            size;
       logic [2:0]            prot;
       logic [3:0]            qos;
@@ -108,16 +108,16 @@ module nasti_lite_reader
       return nasti_shrink(req) ? LITE_DATA_WIDTH/8 : nasti_step_size(req);
    endfunction // lite_step_size
 
-   function int unsigned lite_packet_ratio(input NastiReq req);
-      return nasti_shrink(req) ? 8'd1 << (req.size - LITE_W_BITS) : 1;
+   function logic [BUF_LEN_BITS:0] lite_packet_ratio(input NastiReq req);
+      return nasti_shrink(req) ? 'd1 << (int'(req.size) - LITE_W_BITS) : 'd1;
    endfunction // lite_packet_ratio
 
-   function int unsigned lite_packet_size(input NastiReq req);
-      return lite_packet_ratio(req) * (req.len + 1);
+   function logic [BUF_LEN_BITS+7:0] lite_packet_size(input NastiReq req);
+      return lite_packet_ratio(req) * (req.len + 'd1);
    endfunction // lite_packet_size
 
-   function int unsigned incr(input int unsigned cnt, step, ub);
-      return cnt >= ub - step ? 0 : cnt + step;
+   function logic [MAX_TRAN_BITS-1:0] incr(input logic [MAX_TRAN_BITS-1:0] cnt, int unsigned step, ub);
+      return int'(cnt) >= ub - step ? 'd0 : (MAX_TRAN_BITS)'(int'(cnt) + step);
    endfunction // incr
 
    // buffer requests
@@ -190,14 +190,14 @@ module nasti_lite_reader
      end
 
    logic [BUF_LEN_BITS:0] xact_data_wp_offset;
-   assign xact_data_wp_offset = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? nasti_r_addr[NASTI_W_BITS-1:LITE_W_BITS] : 0;
+   assign xact_data_wp_offset = NASTI_DATA_WIDTH > LITE_DATA_WIDTH ? (BUF_LEN_BITS+1)'(nasti_r_addr[NASTI_W_BITS-1:LITE_W_BITS]) : 'd0;
    assign xact_finish = nasti_r_valid && nasti_r_ready && nasti_r_cnt == xact_req.len;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn)
        xact_data_wp <= 0;
      else if(lite_r_valid && lite_r_ready) begin
-        xact_data_vec[xact_data_wp+xact_data_wp_offset] <= lite_r_data;
+        xact_data_vec[int'(xact_data_wp+xact_data_wp_offset)] <= lite_r_data;
         xact_resp <= lite_r_resp;
         xact_data_wp <= xact_data_wp + 1;
      end else if(nasti_r_valid && nasti_r_ready)

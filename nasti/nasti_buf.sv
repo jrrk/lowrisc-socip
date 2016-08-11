@@ -17,6 +17,7 @@ module nasti_buf
     );
 
    localparam DEPTH_LOC = DEPTH == 0 ? 1 : DEPTH;
+   localparam LOG_DEPTH_LOC = (DEPTH_LOC > 1) ? $clog2(DEPTH_LOC) : 1;
 
    // a little bit awkward implementation due to the fact that
    // isim (Xilinx) is not happy with parameterized assign.
@@ -40,8 +41,8 @@ module nasti_buf
    // And it is not happy with struct
    // Force me to use simple arrays
 
-   function logic [$clog2(DEPTH_LOC)-1:0] incr(logic [$clog2(DEPTH_LOC)-1:0] p);
-      logic [$clog2(DEPTH_LOC):0] p_incr;
+   function logic [LOG_DEPTH_LOC-1:0] incr(logic [LOG_DEPTH_LOC-1:0] p);
+      logic [LOG_DEPTH_LOC:0] p_incr;
       p_incr = {1'b0,p} + 1;
       return p_incr >= DEPTH_LOC ? p_incr - DEPTH_LOC : p_incr;
    endfunction // incr
@@ -59,7 +60,7 @@ module nasti_buf
    logic [3:0]                    aw_q_region [DEPTH_LOC-1:0];
    logic [USER_WIDTH-1:0]         aw_q_user   [DEPTH_LOC-1:0];
    logic [DEPTH_LOC-1:0]          aw_valid;
-   logic [$clog2(DEPTH_LOC)-1:0]  aw_wp, aw_rp;
+   logic [LOG_DEPTH_LOC-1:0]  aw_wp, aw_rp;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
@@ -120,7 +121,7 @@ module nasti_buf
    logic [3:0]                    ar_q_region [DEPTH_LOC-1:0];
    logic [USER_WIDTH-1:0]         ar_q_user   [DEPTH_LOC-1:0];
    logic [DEPTH_LOC-1:0]          ar_valid;
-   logic [$clog2(DEPTH_LOC)-1:0]  ar_wp, ar_rp;
+   logic [LOG_DEPTH_LOC-1:0]  ar_wp, ar_rp;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
@@ -174,7 +175,7 @@ module nasti_buf
    logic                    w_q_last  [DEPTH_LOC-1:0];
    logic [USER_WIDTH-1:0]   w_q_user  [DEPTH_LOC-1:0];
    logic [DEPTH_LOC-1:0]    w_valid;
-   logic [$clog2(DEPTH_LOC)-1:0] w_wp, w_rp;
+   logic [LOG_DEPTH_LOC-1:0] w_wp, w_rp;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
@@ -213,7 +214,7 @@ module nasti_buf
    logic [1:0]            b_q_resp  [DEPTH_LOC-1:0];
    logic [USER_WIDTH-1:0] b_q_user  [DEPTH_LOC-1:0];
    logic [DEPTH_LOC-1:0]  b_valid;
-   logic [$clog2(DEPTH_LOC)-1:0] b_wp, b_rp;
+   logic [LOG_DEPTH_LOC-1:0] b_wp, b_rp;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
@@ -253,7 +254,7 @@ module nasti_buf
    logic [1:0]              r_q_resp  [DEPTH_LOC-1:0];
    logic [USER_WIDTH-1:0]   r_q_user  [DEPTH_LOC-1:0];
    logic [DEPTH_LOC-1:0]    r_valid;
-   logic [$clog2(DEPTH_LOC)-1:0] r_wp, r_rp;
+   logic [LOG_DEPTH_LOC-1:0] r_wp, r_rp;
 
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
