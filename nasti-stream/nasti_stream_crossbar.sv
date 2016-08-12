@@ -6,6 +6,9 @@ module nasti_stream_connector # (
    nasti_stream_channel slave
 );
 
+(* dont_touch = "true" *)
+logic dummy;
+
 assign slave.t_valid [IDX_SLAVE]  = master.t_valid[IDX_MASTER];
 assign slave.t_data  [IDX_SLAVE]  = master.t_data [IDX_MASTER];
 assign slave.t_strb  [IDX_SLAVE]  = master.t_strb [IDX_MASTER];
