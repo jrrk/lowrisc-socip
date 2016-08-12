@@ -13,8 +13,9 @@ module stream_nasti_mover # (
    output logic r_ready
 );
 
-   localparam ADDR_SHIFT = $clog2(DATA_WIDTH / 8);
-   localparam BUF_SHIFT  = $clog2(MAX_BURST_LENGTH);
+   localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
+   localparam ADDR_SHIFT    = $clog2(DATA_BYTE_CNT);
+   localparam BUF_SHIFT     = $clog2(MAX_BURST_LENGTH);
 
    // Buffer
    logic [DATA_WIDTH-1:0] buffer [0:MAX_BURST_LENGTH-1];
@@ -36,47 +37,47 @@ module stream_nasti_mover # (
    logic aw_fire, w_fire, b_fire, t_fire;
 
    // Unused fields, connect to constants
-   assign dest.aw_id = 0;
-   assign dest.aw_size = 3'b011;
+   assign dest.aw_id    = 0;
+   assign dest.aw_size  = 3'b011;
    assign dest.aw_burst = 2'b01;
    assign dest.aw_cache = 4'b0;
-   assign dest.aw_prot = 3'b0;
-   assign dest.aw_lock = 1'b0;
+   assign dest.aw_prot  = 3'b0;
+   assign dest.aw_lock  = 1'b0;
 
    // Note: if data mover is only used in one direction
    // Use the following code to make sure the device
    // will not be affected by x's
    //
    // assign dest.ar_valid = 0;
-   // assign dest.r_ready = 0;
+   // assign dest.r_ready  = 0;
 
-   assign dest.w_strb = {(DATA_WIDTH/8){1'b1}};
+   assign dest.w_strb = {DATA_BYTE_CNT{1'b1}};
 
    assign aw_fire = dest.aw_ready & dest.aw_valid;
-   assign w_fire = dest.w_ready & dest.w_valid;
-   assign b_fire = dest.b_ready & dest.b_valid;
-   assign t_fire = src.t_ready & src.t_valid;
+   assign w_fire  = dest.w_ready & dest.w_valid;
+   assign b_fire  = dest.b_ready & dest.b_valid;
+   assign t_fire  = src.t_ready & src.t_valid;
 
    assign length_new = t_fire && src.t_keep ? length + 1 : length;
-   assign ptr_new = w_fire ? ptr + 1 : ptr;
+   assign ptr_new    = w_fire ? ptr + 1 : ptr;
 
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
          r_ready <= 1;
 
-         src.t_ready <= 0;
+         src.t_ready   <= 0;
          dest.aw_valid <= 0;
-         dest.w_valid <= 0;
-         dest.b_ready <= 0;
+         dest.w_valid  <= 0;
+         dest.b_ready  <= 0;
       end
       else if (r_ready) begin
          if (r_valid) begin
-            assert((r_dest & (DATA_WIDTH - 1)) == 0) else $error("NASTI-Stream to NASTI Data Mover: Request must be aligned");
+            assert((r_dest & (DATA_BYTE_CNT - 1)) == 0) else $error("NASTI-Stream to NASTI Data Mover: Request must be aligned");
 
             dest_addr  <= {r_dest[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
             r_ready    <= 0;
 
-            last_burst <= 0;
+            last_burst       <= 0;
             last_burst_delay <= 0;
 
             // Clear buffer

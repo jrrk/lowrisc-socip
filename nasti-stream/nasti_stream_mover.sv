@@ -13,21 +13,22 @@ module nasti_stream_mover # (
    input  r_valid,
    output logic r_ready
 );
-   localparam ADDR_SHIFT = $clog2(DATA_WIDTH / 8);
+   localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
+   localparam ADDR_SHIFT    = $clog2(DATA_BYTE_CNT);
 
    // Internal values to track the transfer
    logic [63:0] src_addr, length;
    logic transferring;
 
    // Unused fields, connect to constants
-   assign src.ar_id = 0;
-   assign src.ar_size = 3'b011;
+   assign src.ar_id    = 0;
+   assign src.ar_size  = 3'b011;
    assign src.ar_burst = 2'b01;
    assign src.ar_cache = 4'b0;
-   assign src.ar_prot = 3'b0;
-   assign src.ar_lock = 1'b0;
+   assign src.ar_prot  = 3'b0;
+   assign src.ar_lock  = 1'b0;
 
-   assign dest.t_id = 0;
+   assign dest.t_id   = 0;
    assign dest.t_dest = 0;
    assign dest.t_user = 0;
 
@@ -36,13 +37,13 @@ module nasti_stream_mover # (
    // will not be affected by x's
    //
    // assign src.aw_valid = 0;
-   // assign src.w_valid = 0;
-   // assign src.b_ready = 0;
+   // assign src.w_valid  = 0;
+   // assign src.b_ready  = 0;
 
    // Connect dest.t to src.r directly
    // Note that a read error is not considered here
-   assign dest.t_strb  = {(DATA_WIDTH/8){1'b1}};
-   assign dest.t_keep  = {(DATA_WIDTH/8){1'b1}};
+   assign dest.t_strb  = {DATA_BYTE_CNT{1'b1}};
+   assign dest.t_keep  = {DATA_BYTE_CNT{1'b1}};
    assign dest.t_valid = src.r_valid;
    assign dest.t_data  = src.r_data;
    assign dest.t_last  = length == 0 ? src.r_last : 0;
@@ -56,13 +57,13 @@ module nasti_stream_mover # (
       end
       else if (r_ready) begin
          if (r_valid) begin
-            assert((r_src  & (DATA_WIDTH - 1)) == 0) else $error("Data mover request must be aligned");
-            assert((r_len  & (DATA_WIDTH - 1)) == 0) else $error("Data mover request must be aligned");
+            assert((r_src  & (DATA_BYTE_CNT - 1)) == 0) else $error("Data mover request must be aligned");
+            assert((r_len  & (DATA_BYTE_CNT - 1)) == 0) else $error("Data mover request must be aligned");
 
             transferring <= 0;
-            src_addr   <= {r_src [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
-            length     <= {r_len [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
-            r_ready    <= 0;
+            src_addr     <= {r_src [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+            length       <= {r_len [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+            r_ready      <= 0;
          end
       end
       else begin
