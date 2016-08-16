@@ -16,6 +16,20 @@ module nasti_stream_mover # (
    localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
    localparam ADDR_SHIFT    = $clog2(DATA_BYTE_CNT);
 
+   nasti_stream_channel # (
+      .DATA_WIDTH (DATA_WIDTH)
+   ) ch();
+
+   nasti_stream_buf # (
+      .DATA_WIDTH (DATA_WIDTH),
+      .BUF_SIZE (MAX_BURST_LENGTH)
+   ) buffer (
+      .aclk (aclk),
+      .aresetn (aresetn),
+      .src (ch),
+      .dest (dest)
+   );
+
    // Internal values to track the transfer
    logic [63:0] src_addr, length;
    logic transferring;
@@ -28,9 +42,9 @@ module nasti_stream_mover # (
    assign src.ar_prot  = 3'b0;
    assign src.ar_lock  = 1'b0;
 
-   assign dest.t_id   = 0;
-   assign dest.t_dest = 0;
-   assign dest.t_user = 0;
+   assign ch.t_id   = 0;
+   assign ch.t_dest = 0;
+   assign ch.t_user = 0;
 
    // Note: if data mover is only used in one direction
    // Use the following code to make sure the device
@@ -40,14 +54,14 @@ module nasti_stream_mover # (
    // assign src.w_valid  = 0;
    // assign src.b_ready  = 0;
 
-   // Connect dest.t to src.r directly
+   // Connect ch.t to src.r directly
    // Note that a read error is not considered here
-   assign dest.t_strb  = {DATA_BYTE_CNT{1'b1}};
-   assign dest.t_keep  = {DATA_BYTE_CNT{1'b1}};
-   assign dest.t_valid = src.r_valid;
-   assign dest.t_data  = src.r_data;
-   assign dest.t_last  = length == 0 ? src.r_last : 0;
-   assign src.r_ready  = dest.t_ready;
+   assign ch.t_strb  = {DATA_BYTE_CNT{1'b1}};
+   assign ch.t_keep  = {DATA_BYTE_CNT{1'b1}};
+   assign ch.t_valid = src.r_valid;
+   assign ch.t_data  = src.r_data;
+   assign ch.t_last  = length == 0 ? src.r_last : 0;
+   assign src.r_ready  = ch.t_ready;
 
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
@@ -76,20 +90,25 @@ module nasti_stream_mover # (
                r_ready <= 1;
             end
             else begin
-               // Initialize a read burst
-               src.ar_addr   <= src_addr;
-               src.ar_valid  <= 1;
-
-               if ((length >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
-                  src.ar_len     <= MAX_BURST_LENGTH -1;
-                  length         <= length    - (MAX_BURST_LENGTH << ADDR_SHIFT);
-                  src_addr       <= src_addr  + (MAX_BURST_LENGTH << ADDR_SHIFT);
-               end
+               if (dest.t_valid)
+                  // Wait until buffer is empty
+                  transferring  <= 0;
                else begin
-                  src.ar_len   <= (length >> ADDR_SHIFT) - 1;
-                  length       <= 0;
+                  // Initialize a read burst
+                  src.ar_addr   <= src_addr;
+                  src.ar_valid  <= 1;
+
+                  if ((length >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
+                     src.ar_len     <= MAX_BURST_LENGTH -1;
+                     length         <= length    - (MAX_BURST_LENGTH << ADDR_SHIFT);
+                     src_addr       <= src_addr  + (MAX_BURST_LENGTH << ADDR_SHIFT);
+                  end
+                  else begin
+                     src.ar_len   <= (length >> ADDR_SHIFT) - 1;
+                     length       <= 0;
+                  end
+                  transferring = 1;
                end
-               transferring = 1;
             end
          end
          else if (src.ar_valid && src.ar_ready)
