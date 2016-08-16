@@ -18,7 +18,8 @@ module stream_nasti_mover # (
    localparam BUF_SHIFT     = $clog2(MAX_BURST_LENGTH);
 
    // Buffer
-   logic [DATA_WIDTH-1:0] buffer [0:MAX_BURST_LENGTH-1];
+   logic [DATA_WIDTH-1:0]   buffer [0:MAX_BURST_LENGTH-1];
+   logic [DATA_WIDTH/8-1:0] strobe [0:MAX_BURST_LENGTH-1];
    logic [BUF_SHIFT:0] length, length_new, length_latch, ptr, ptr_new;
 
    // Current destination address, auto-incremented
@@ -50,8 +51,6 @@ module stream_nasti_mover # (
    //
    // assign dest.ar_valid = 0;
    // assign dest.r_ready  = 0;
-
-   assign dest.w_strb = {DATA_BYTE_CNT{1'b1}};
 
    assign aw_fire = dest.aw_ready & dest.aw_valid;
    assign w_fire  = dest.w_ready & dest.w_valid;
@@ -95,10 +94,10 @@ module stream_nasti_mover # (
                   // Data byte, write to buffer
                   if (t_fire && src.t_keep) begin
                      assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
-                     assert(&src.t_strb) else $error("NASTI-Stream to NASTI Data Mover: Position byte not supported");
 
                      // Append to buffer
                      buffer[length] <= src.t_data;
+                     strobe[length] <= src.t_strb;
                   end
 
                   if (last_burst_delay || t_fire && src.t_last) last_burst <= 1;
@@ -140,6 +139,7 @@ module stream_nasti_mover # (
                   // Send first unit of data
                   dest.w_valid  <= 1;
                   dest.w_data   <= buffer[0];
+                  dest.w_strb   <= strobe[0];
                   dest.w_last   <= length_latch == 1;
                   ptr           <= 1;
 
@@ -159,6 +159,7 @@ module stream_nasti_mover # (
                   end
                   else begin
                      dest.w_data <= buffer[ptr];
+                     dest.w_strb <= strobe[ptr];
                      dest.w_last <= ptr_new == length_latch;
                      ptr         <= ptr_new;
                   end
@@ -176,10 +177,10 @@ module stream_nasti_mover # (
                if (t_fire) begin
                   if (src.t_keep) begin
                      assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
-                     assert(&src.t_strb) else $error("NASTI-Stream to NASTI Data Mover: Position byte not supported");
 
                      // Append to buffer
                      buffer[length] <= src.t_data;
+                     strobe[length] <= src.t_strb;
 
                      length <= length_new;
                   end
