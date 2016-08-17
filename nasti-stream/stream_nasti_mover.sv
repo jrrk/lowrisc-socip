@@ -115,7 +115,7 @@ module stream_nasti_mover # (
                         // Send a write request
                         dest.aw_valid <= 1;
                         dest.aw_addr  <= dest_addr;
-                        dest.aw_len   <= length;
+                        dest.aw_len   <= length_new - 1;
 
                         // Latch original length
                         // and set length = 0
