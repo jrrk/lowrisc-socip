@@ -11,7 +11,7 @@
    nasti_stream_channel.master dest
 );
 
-localparam BUF_WIDTH = $clog2(BUF_SIZE);
+localparam BUF_WIDTH = BUF_SIZE > 1 ? $clog2(BUF_SIZE) : 1;
 
 // Ring buffer constructs
 logic [DATA_WIDTH-1:0]   data_buf [0:BUF_SIZE-1];
