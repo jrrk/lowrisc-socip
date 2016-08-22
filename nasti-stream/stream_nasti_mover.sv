@@ -146,7 +146,7 @@ module stream_nasti_mover # (
                   // Switch state
                   state         <= STATE_WRITE;
                   dest.aw_valid <= 0;
-                  src.t_ready   <= 1;
+                  src.t_ready   <= last_burst ? 0 : 1;
                end
             end
             STATE_WRITE: begin

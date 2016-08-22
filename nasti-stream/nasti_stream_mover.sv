@@ -81,38 +81,45 @@ module nasti_stream_mover # (
          end
       end
       else begin
-         if (!transferring || (src.r_valid && src.r_last && src.r_ready)) begin
+         if (transferring) begin
+            // ar fired
+            if (src.ar_valid && src.ar_ready) begin
+               src.ar_valid <= 0;
+            end
+
+            // Last byte of transfer, we will take control back
+            if (src.r_valid && src.r_ready && src.r_last) begin
+               transferring <= 0;
+            end
+         end else begin
             // When the data moving request just starts
-            // or when the last NASTI transaction finished
+            // or when the last NASTI burst finished
 
             if (length == 0) begin
                // Finish the request
                r_ready <= 1;
             end
             else begin
-               if (dest.t_valid)
-                  // Wait until buffer is empty
-                  transferring  <= 0;
-               else begin
+               // Wait until buffer is empty
+               if (!dest.t_valid) begin
                   // Initialize a read burst
                   src.ar_addr   <= src_addr;
                   src.ar_valid  <= 1;
 
-                  if ((length >> ADDR_SHIFT) > MAX_BURST_LENGTH) begin
+                  if ((length >> ADDR_SHIFT) >= MAX_BURST_LENGTH) begin
                      src.ar_len     <= MAX_BURST_LENGTH -1;
                      length         <= length    - (MAX_BURST_LENGTH << ADDR_SHIFT);
                      src_addr       <= src_addr  + (MAX_BURST_LENGTH << ADDR_SHIFT);
                   end
                   else begin
+                     assert(0) else $warning("NASTI to NASTI-Stream Data Mover: Partial burst causes error in NASTI/TileLink converter");
                      src.ar_len   <= (length >> ADDR_SHIFT) - 1;
                      length       <= 0;
                   end
-                  transferring = 1;
+                  transferring <= 1;
                end
             end
          end
-         else if (src.ar_valid && src.ar_ready)
-            src.ar_valid <= 0;
       end
    end
 

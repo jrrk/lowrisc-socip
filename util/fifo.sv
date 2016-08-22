@@ -14,7 +14,7 @@ module fifo # (
 
 // Ring buffer constructs
 logic [WIDTH-1:0] buffer [0:2**DEPTH-1];
-logic [DEPTH-1:0] readptr, writeptr;
+logic [DEPTH-1:0] readptr, readptr_next, writeptr;
 logic [DEPTH-1:0] readptr_new, writeptr_new;
 
 // Internal status
@@ -28,18 +28,20 @@ endfunction
 assign r_fire = !empty & r_en;
 assign w_fire = w_en & !full;
 
-assign readptr_new = r_fire ? incr(readptr) : readptr;
+assign readptr_new = r_fire ? readptr_next : readptr;
 assign writeptr_new = w_fire ? incr(writeptr) : writeptr;
 
 always_ff @(posedge aclk or negedge aresetn)
    if (!aresetn) begin
       readptr <= 0;
+      readptr_next <= 1;
       writeptr <= 0;
       full  <= 0;
       empty <= 1;
    end
    else begin
       readptr  <= readptr_new;
+      readptr_next <= incr(readptr_new);
       writeptr <= writeptr_new;
 
       // Update empty & full from pointer
@@ -56,9 +58,9 @@ always_ff @(posedge aclk or negedge aresetn)
          // Writing without buffer remaining
          // Pipe it to output directly
          r_data <= w_data;
-      else
+      else if (r_fire)
          // Fetch read data from buffer
-         r_data <= buffer[readptr_new];
+         r_data <= buffer[readptr_next];
 
       // Write into buffer
       if (w_fire)
