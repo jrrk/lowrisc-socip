@@ -18,30 +18,60 @@ module nasti_data_mover # (
    localparam ADDR_SHIFT = $clog2(DATA_WIDTH / 8);
 
    // Unused fields, connect to constants
-   assign src.ar_id = 0;
-   assign src.ar_size = 3'b011;
-   assign src.ar_burst = 2'b01;
-   assign src.ar_cache = 4'b0;
-   assign src.ar_prot = 3'b0;
-   assign src.ar_lock = 1'b0;
+   assign src.ar_id     = 0;
+   assign src.ar_size   = 3'b011;
+   assign src.ar_burst  = 2'b01;
+   assign src.ar_cache  = 4'b0;
+   assign src.ar_prot   = 3'b0;
+   assign src.ar_lock   = 1'b0;
+   assign src.ar_qos    = 4'b0;
+   assign src.ar_region = 4'b0;
+   assign src.ar_user   = 0;
 
-   assign dest.aw_id = 0;
-   assign dest.aw_size = 3'b011;
-   assign dest.aw_burst = 2'b01;
-   assign dest.aw_cache = 4'b0;
-   assign dest.aw_prot = 3'b0;
-   assign dest.aw_lock = 1'b0;
+   assign dest.aw_id     = 0;
+   assign dest.aw_size   = 3'b011;
+   assign dest.aw_burst  = 2'b01;
+   assign dest.aw_cache  = 4'b0;
+   assign dest.aw_prot   = 3'b0;
+   assign dest.aw_lock   = 1'b0;
+   assign dest.aw_qos    = 4'b0;
+   assign dest.aw_region = 4'b0;
+   assign dest.aw_user   = 0;
 
-   // Note: if data mover is only used in one direction
-   // Use the following code to make sure the device
-   // will not be affected by x's
-   //
-   // assign src.aw_valid = 0;
-   // assign src.w_valid = 0;
-   // assign src.b_ready = 0;
-   //
-   // assign dest.ar_valid = 0;
-   // assign dest.r_ready = 0;
+   // Write channel of src, connect to zeros
+   assign src.aw_id     = 0;
+   assign src.aw_addr   = 0;
+   assign src.aw_len    = 0;
+   assign src.aw_size   = 0;
+   assign src.aw_burst  = 0;
+   assign src.aw_lock   = 0;
+   assign src.aw_cache  = 0;
+   assign src.aw_prot   = 0;
+   assign src.aw_qos    = 0;
+   assign src.aw_region = 0;
+   assign src.aw_user   = 0;
+   assign src.aw_valid  = 0;
+   assign src.w_data    = 0;
+   assign src.w_strb    = 0;
+   assign src.w_last    = 0;
+   assign src.w_user    = 0;
+   assign src.w_valid   = 0;
+   assign src.b_ready   = 0;
+
+   // Read channels of dest, connect to zeros
+   assign dest.ar_id     = 0;
+   assign dest.ar_addr   = 0;
+   assign dest.ar_len    = 0;
+   assign dest.ar_size   = 0;
+   assign dest.ar_burst  = 0;
+   assign dest.ar_lock   = 0;
+   assign dest.ar_cache  = 0;
+   assign dest.ar_prot   = 0;
+   assign dest.ar_qos    = 0;
+   assign dest.ar_region = 0;
+   assign dest.ar_user   = 0;
+   assign dest.ar_valid  = 0;
+   assign dest.r_ready   = 0;
 
    // Connect dest.w to src.r directly
    // Note that a read error is not considered here

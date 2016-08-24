@@ -35,24 +35,38 @@ module nasti_stream_mover # (
    logic transferring;
 
    // Unused fields, connect to constants
-   assign src.ar_id    = 0;
-   assign src.ar_size  = 3'b011;
-   assign src.ar_burst = 2'b01;
-   assign src.ar_cache = 4'b0;
-   assign src.ar_prot  = 3'b0;
-   assign src.ar_lock  = 1'b0;
+   assign src.ar_id     = 0;
+   assign src.ar_size   = 3'b011;
+   assign src.ar_burst  = 2'b01;
+   assign src.ar_cache  = 4'b0;
+   assign src.ar_prot   = 3'b0;
+   assign src.ar_lock   = 1'b0;
+   assign src.ar_qos    = 4'b0;
+   assign src.ar_region = 4'b0;
+   assign src.ar_user   = 0;
+   assign ch.t_id       = 0;
+   assign ch.t_dest     = 0;
+   assign ch.t_user     = 0;
 
-   assign ch.t_id   = 0;
-   assign ch.t_dest = 0;
-   assign ch.t_user = 0;
-
-   // Note: if data mover is only used in one direction
-   // Use the following code to make sure the device
-   // will not be affected by x's
-   //
-   // assign src.aw_valid = 0;
-   // assign src.w_valid  = 0;
-   // assign src.b_ready  = 0;
+   // Write channels, connect to zeros
+   assign src.aw_id     = 0;
+   assign src.aw_addr   = 0;
+   assign src.aw_len    = 0;
+   assign src.aw_size   = 0;
+   assign src.aw_burst  = 0;
+   assign src.aw_lock   = 0;
+   assign src.aw_cache  = 0;
+   assign src.aw_prot   = 0;
+   assign src.aw_qos    = 0;
+   assign src.aw_region = 0;
+   assign src.aw_user   = 0;
+   assign src.aw_valid  = 0;
+   assign src.w_data    = 0;
+   assign src.w_strb    = 0;
+   assign src.w_last    = 0;
+   assign src.w_user    = 0;
+   assign src.w_valid   = 0;
+   assign src.b_ready   = 0;
 
    // Connect ch.t to src.r directly
    // Note that a read error is not considered here

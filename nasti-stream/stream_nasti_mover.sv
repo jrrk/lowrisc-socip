@@ -38,19 +38,31 @@ module stream_nasti_mover # (
    logic aw_fire, w_fire, b_fire, t_fire;
 
    // Unused fields, connect to constants
-   assign dest.aw_id    = 0;
-   assign dest.aw_size  = 3'b011;
-   assign dest.aw_burst = 2'b01;
-   assign dest.aw_cache = 4'b0;
-   assign dest.aw_prot  = 3'b0;
-   assign dest.aw_lock  = 1'b0;
+   assign dest.aw_id     = 0;
+   assign dest.aw_size   = 3'b011;
+   assign dest.aw_burst  = 2'b01;
+   assign dest.aw_cache  = 4'b0;
+   assign dest.aw_prot   = 3'b0;
+   assign dest.aw_lock   = 1'b0;
+   assign dest.aw_qos    = 4'b0;
+   assign dest.aw_region = 4'b0;
+   assign dest.aw_user   = 0;
+   assign dest.w_user    = 0;
 
-   // Note: if data mover is only used in one direction
-   // Use the following code to make sure the device
-   // will not be affected by x's
-   //
-   // assign dest.ar_valid = 0;
-   // assign dest.r_ready  = 0;
+   // Read channels, connect to zeros
+   assign dest.ar_id     = 0;
+   assign dest.ar_addr   = 0;
+   assign dest.ar_len    = 0;
+   assign dest.ar_size   = 0;
+   assign dest.ar_burst  = 0;
+   assign dest.ar_lock   = 0;
+   assign dest.ar_cache  = 0;
+   assign dest.ar_prot   = 0;
+   assign dest.ar_qos    = 0;
+   assign dest.ar_region = 0;
+   assign dest.ar_user   = 0;
+   assign dest.ar_valid  = 0;
+   assign dest.r_ready   = 0;
 
    assign aw_fire = dest.aw_ready & dest.aw_valid;
    assign w_fire  = dest.w_ready & dest.w_valid;
