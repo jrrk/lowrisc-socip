@@ -56,8 +56,13 @@ always_ff @(posedge aclk or negedge aresetn)
 
       // Update empty & full from pointer
       if (readptr_new == writeptr_new) begin
-         if (r_fire) empty <= 1;
-         if (w_fire) full  <= 1;
+         if (r_fire) begin
+            empty <= 1;
+            full  <= 0;
+         end else if (w_fire) begin
+            empty <= 0;
+            full  <= 1;
+         end
       end
       else begin
          empty <= 0;
