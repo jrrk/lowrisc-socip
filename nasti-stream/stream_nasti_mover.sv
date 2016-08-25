@@ -6,16 +6,35 @@ module stream_nasti_mover # (
    input  aclk,
    input  aresetn,
    nasti_stream_channel.slave src,
-   // Do not use modport here, we are not using all of master connections
-   nasti_channel dest,
-   input  [ADDR_WIDTH-1:0] r_dest,
+   nasti_channel.master       dest,
+   nasti_stream_channel.slave command,
+
    input  r_valid,
    output logic r_ready
 );
 
    localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
    localparam ADDR_SHIFT    = $clog2(DATA_BYTE_CNT);
+   localparam LEN_WIDTH     = ADDR_SHIFT + 16;
    localparam BUF_SHIFT     = $clog2(MAX_BURST_LENGTH);
+
+   // Structure of command. This depends on width of address.
+   // If address is 46-bit, then this struct is 64 bit
+   typedef struct packed unsigned {
+      // Lowest ADDR_SHIFT bits are required to be zero
+      logic [ADDR_WIDTH-1:ADDR_SHIFT] addr;
+      // 16-bit length field
+      logic [ LEN_WIDTH-1:ADDR_SHIFT] length;
+      logic [7:0] reserved;
+   } DataMoverReq;
+
+   // Internal channel connected to buffer
+   nasti_stream_channel # (
+      .DATA_WIDTH (DATA_WIDTH)
+   ) ch();
+
+   // Internal values to track the transfer
+   DataMoverReq req;
 
    // Buffer
    logic [DATA_WIDTH-1:0]   buffer [0:MAX_BURST_LENGTH-1];
@@ -23,12 +42,13 @@ module stream_nasti_mover # (
    logic [BUF_SHIFT:0] length, length_new, length_latch, ptr, ptr_new;
 
    // Current destination address, auto-incremented
-   logic [63:0] dest_addr;
    logic last_burst, last_burst_delay;
 
    // States
    enum {
       STATE_IDLE,
+      STATE_COMMAND,
+      STATE_START,
       STATE_ADDRESS,
       STATE_WRITE,
       STATE_RESP
@@ -72,21 +92,34 @@ module stream_nasti_mover # (
    assign length_new = t_fire && src.t_keep ? length + 1 : length;
    assign ptr_new    = w_fire ? ptr + 1 : ptr;
 
+   // We are ready to start when we are in IDLE state
+   assign r_ready = state == STATE_IDLE;
+
+   // We can receive command when we are in COMMAND state
+   assign command.t_ready = state == STATE_COMMAND;
+
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
-         r_ready <= 1;
+         state <= STATE_IDLE;
 
          src.t_ready   <= 0;
          dest.aw_valid <= 0;
          dest.w_valid  <= 0;
          dest.b_ready  <= 0;
       end
-      else if (r_ready) begin
+      else if (state == STATE_IDLE) begin
          if (r_valid) begin
-            assert((r_dest & (DATA_BYTE_CNT - 1)) == 0) else $error("NASTI-Stream to NASTI Data Mover: Request must be aligned");
-
-            dest_addr  <= {r_dest[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
-            r_ready    <= 0;
+            // IDLE state, r_ready is high
+            // Waiting for r_valid, then we'll start accepting command
+            if (r_valid) begin
+               state <= STATE_COMMAND;
+            end
+         end
+      end else if (state == STATE_COMMAND) begin
+         // COMMAND state, command.t_ready is high
+         // Waiting for t_valid, then we'll start actual DMA
+         if (command.t_valid) begin
+            req <= command.t_data;
 
             last_burst       <= 0;
             last_burst_delay <= 0;
@@ -95,13 +128,12 @@ module stream_nasti_mover # (
             length   <= 0;
             ptr      <= 0;
 
-            state       <= STATE_IDLE;
+            state       <= STATE_START;
             src.t_ready <= 1;
          end
-      end
-      else begin
+      end else begin
          case (state)
-            STATE_IDLE: begin
+            STATE_START: begin
                if (t_fire || last_burst_delay || length == MAX_BURST_LENGTH) begin
                   // Data byte, write to buffer
                   if (t_fire && src.t_keep) begin
@@ -114,19 +146,20 @@ module stream_nasti_mover # (
 
                   if (last_burst_delay || t_fire && src.t_last) last_burst <= 1;
 
-                  if (length_new == MAX_BURST_LENGTH || last_burst_delay || t_fire && src.t_last) begin
+                  if (length_new == MAX_BURST_LENGTH || length_new == req.length ||
+                      last_burst_delay || t_fire && src.t_last) begin
                      // Stop receiving inputs
                      src.t_ready <= 0;
 
                      // Last null byte
                      if (length_new == 0)
-                        r_ready <= 1;
+                        state <= STATE_IDLE;
                      else begin
                         assert (length_new == MAX_BURST_LENGTH) else $warning("NASTI-Stream to NASTI Data Mover: Partial burst causes error in NASTI/TileLink converter");
 
                         // Send a write request
                         dest.aw_valid <= 1;
-                        dest.aw_addr  <= dest_addr;
+                        dest.aw_addr  <= {req.addr, {ADDR_SHIFT{1'b0}}};
                         dest.aw_len   <= length_new - 1;
 
                         // Latch original length
@@ -136,10 +169,11 @@ module stream_nasti_mover # (
                         length        <= 0;
 
                         // Update internal destination address
-                        dest_addr     <= dest_addr + (length_new << ADDR_SHIFT);
+                        req.addr     <= req.addr   + length_new;
+                        req.length   <= req.length - length_new;
 
                         // Switch state, stop receiving more data from src.t
-                        state         <= STATE_ADDRESS;
+                        state        <= STATE_ADDRESS;
                      end
                   end
                   else
@@ -158,7 +192,7 @@ module stream_nasti_mover # (
                   // Switch state
                   state         <= STATE_WRITE;
                   dest.aw_valid <= 0;
-                  src.t_ready   <= last_burst ? 0 : 1;
+                  src.t_ready   <= last_burst || req.length == 0 ? 0 : 1;
                end
             end
             STATE_WRITE: begin
@@ -179,7 +213,7 @@ module stream_nasti_mover # (
 
                // Set t_ready if we are continuing in STATE_WRITE
                // we have enough space, and when the package is not finished
-               if (t_fire && src.t_last || last_burst_delay || last_burst)
+               if (t_fire && src.t_last || last_burst_delay || last_burst || req.length == 0)
                   src.t_ready <= 0;
                else if (w_fire && ptr == length_latch)
                   src.t_ready <= 0;
@@ -206,10 +240,12 @@ module stream_nasti_mover # (
                if (b_fire) begin
                   dest.b_ready <= 0;
                   if (last_burst)
-                     r_ready <= 1;
-                  else begin
+                     state <= STATE_IDLE;
+                  else if (req.length == 0) begin
+                     state <= STATE_COMMAND;
+                  end else begin
                      // Start next buffer-and-write cycle
-                     state       <= STATE_IDLE;
+                     state       <= STATE_START;
                      src.t_ready <= length != MAX_BURST_LENGTH && !last_burst_delay;
                   end
                end

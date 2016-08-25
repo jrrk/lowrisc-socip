@@ -5,21 +5,48 @@ module nasti_stream_mover # (
 ) (
    input  aclk,
    input  aresetn,
-   // Do not use modport here, we are not using all of master connections
-   nasti_channel src,
+   nasti_channel.master        src,
    nasti_stream_channel.master dest,
-   input  [ADDR_WIDTH-1:0] r_src,
-   input  [ADDR_WIDTH-1:0] r_len,
+
+   nasti_stream_channel.slave  command,
+
    input  r_valid,
    output logic r_ready
 );
+
    localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
    localparam ADDR_SHIFT    = $clog2(DATA_BYTE_CNT);
+   localparam LEN_WIDTH     = ADDR_SHIFT + 16;
 
+   // Structure of command. This depends on width of address.
+   // If address is 46-bit, then this struct is 64 bit
+   typedef struct packed unsigned {
+      // Lowest ADDR_SHIFT bits are required to be zero
+      logic [ADDR_WIDTH-1:ADDR_SHIFT] addr;
+      // 16-bit length field
+      logic [ LEN_WIDTH-1:ADDR_SHIFT] length;
+      logic [6:0] reserved;
+      logic last;
+   } DataMoverReq;
+
+   // States
+   enum {
+      STATE_IDLE,    // Default state
+      STATE_COMMAND, // Waiting for NASTI Stream command input
+      STATE_START,   // Start NASTI transaction
+      STATE_READING  // Reading from NASTI
+   } state;
+
+   // Internal channel connected to buffer
    nasti_stream_channel # (
       .DATA_WIDTH (DATA_WIDTH)
    ) ch();
 
+   // Internal values to track the transfer
+   DataMoverReq req;
+
+   // Internal buffer. We will only start new NASTI transaction
+   // when buffer is empty to prevent deadlocks
    nasti_stream_buf # (
       .DATA_WIDTH (DATA_WIDTH),
       .BUF_SIZE (MAX_BURST_LENGTH)
@@ -29,10 +56,6 @@ module nasti_stream_mover # (
       .src (ch),
       .dest (dest)
    );
-
-   // Internal values to track the transfer
-   logic [63:0] src_addr, length;
-   logic transferring;
 
    // Unused fields, connect to constants
    assign src.ar_id     = 0;
@@ -74,65 +97,73 @@ module nasti_stream_mover # (
    assign ch.t_keep  = {DATA_BYTE_CNT{1'b1}};
    assign ch.t_valid = src.r_valid;
    assign ch.t_data  = src.r_data;
-   assign ch.t_last  = length == 0 ? src.r_last : 0;
+   assign ch.t_last  = req.last && req.length == 0 ? src.r_last : 0;
    assign src.r_ready  = ch.t_ready;
+
+   // We are ready to start when we are in IDLE state
+   assign r_ready = state == STATE_IDLE;
+
+   // We can receive command when we are in COMMAND state
+   assign command.t_ready = state == STATE_COMMAND;
 
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
-         r_ready <= 1;
+         state <= STATE_IDLE;
 
          src.ar_valid <= 0;
       end
-      else if (r_ready) begin
+      else if (state == STATE_IDLE) begin
+         // IDLE state, r_ready is high
+         // Waiting for r_valid, then we'll start accepting command
          if (r_valid) begin
-            assert((r_src  & (DATA_BYTE_CNT - 1)) == 0) else $error("Data mover request must be aligned");
-            assert((r_len  & (DATA_BYTE_CNT - 1)) == 0) else $error("Data mover request must be aligned");
-
-            transferring <= 0;
-            src_addr     <= {r_src [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
-            length       <= {r_len [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
-            r_ready      <= 0;
+            state <= STATE_COMMAND;
          end
       end
-      else begin
-         if (transferring) begin
-            // ar fired
-            if (src.ar_valid && src.ar_ready) begin
-               src.ar_valid <= 0;
-            end
+      else if (state == STATE_COMMAND) begin
+         // COMMAND state, command.t_ready is high
+         // Waiting for t_valid, then we'll start actual DMA
+         if (command.t_valid) begin
+            req <= command.t_data;
+            state <= STATE_START;
+         end
+      end
+      else if (state == STATE_START) begin
+         // When the data moving request just starts
+         // or when the last NASTI burst finished
 
-            // Last byte of transfer, we will take control back
-            if (src.r_valid && src.r_ready && src.r_last) begin
-               transferring <= 0;
-            end
-         end else begin
-            // When the data moving request just starts
-            // or when the last NASTI burst finished
+         if (req.length == 0) begin
+            // Finish the request
+            state <= req.last ? STATE_IDLE : STATE_COMMAND;
+         end
+         else begin
+            // Wait until buffer is empty
+            if (!dest.t_valid) begin
+               // Initialize a read burst
+               src.ar_addr   <= {req.addr, {ADDR_SHIFT{1'b0}}};
+               src.ar_valid  <= 1;
 
-            if (length == 0) begin
-               // Finish the request
-               r_ready <= 1;
-            end
-            else begin
-               // Wait until buffer is empty
-               if (!dest.t_valid) begin
-                  // Initialize a read burst
-                  src.ar_addr   <= src_addr;
-                  src.ar_valid  <= 1;
-
-                  if ((length >> ADDR_SHIFT) >= MAX_BURST_LENGTH) begin
-                     src.ar_len     <= MAX_BURST_LENGTH -1;
-                     length         <= length    - (MAX_BURST_LENGTH << ADDR_SHIFT);
-                     src_addr       <= src_addr  + (MAX_BURST_LENGTH << ADDR_SHIFT);
-                  end
-                  else begin
-                     assert(0) else $warning("NASTI to NASTI-Stream Data Mover: Partial burst causes error in NASTI/TileLink converter");
-                     src.ar_len   <= (length >> ADDR_SHIFT) - 1;
-                     length       <= 0;
-                  end
-                  transferring <= 1;
+               if (req.length >= MAX_BURST_LENGTH) begin
+                  src.ar_len   <= MAX_BURST_LENGTH -1;
+                  req.length   <= req.length - MAX_BURST_LENGTH;
+                  req.addr     <= req.addr   + MAX_BURST_LENGTH;
                end
+               else begin
+                  assert(0) else $warning("NASTI to NASTI-Stream Data Mover: Partial burst causes error in NASTI/TileLink converter");
+                  src.ar_len   <= req.length - 1;
+                  req.length   <= 0;
+               end
+               state <= STATE_READING;
             end
+         end
+      end else begin
+         // ar fired
+         if (src.ar_valid && src.ar_ready) begin
+            src.ar_valid <= 0;
+         end
+
+         // Last byte of transfer, we will take control back
+         if (src.r_valid && src.r_ready && src.r_last) begin
+            state <= STATE_START;
          end
       end
    end
