@@ -7,10 +7,11 @@ module stream_nasti_mover # (
    input  aresetn,
    nasti_stream_channel.slave src,
    nasti_channel.master       dest,
-   nasti_stream_channel.slave command,
 
-   input  r_valid,
-   output logic r_ready
+   input  w_valid,
+   input  [ADDR_WIDTH-1:0] w_addr,
+   input  [ADDR_WIDTH-1:0] w_len,
+   output logic w_ready
 );
 
    localparam DATA_BYTE_CNT = DATA_WIDTH / 8;
@@ -18,23 +19,14 @@ module stream_nasti_mover # (
    localparam LEN_WIDTH     = ADDR_SHIFT + 16;
    localparam BUF_SHIFT     = $clog2(MAX_BURST_LENGTH);
 
-   // Structure of command. This depends on width of address.
-   // If address is 46-bit, then this struct is 64 bit
-   typedef struct packed unsigned {
-      // Lowest ADDR_SHIFT bits are required to be zero
-      logic [ADDR_WIDTH-1:ADDR_SHIFT] addr;
-      // 16-bit length field
-      logic [ LEN_WIDTH-1:ADDR_SHIFT] length;
-      logic [7:0] reserved;
-   } DataMoverReq;
-
    // Internal channel connected to buffer
    nasti_stream_channel # (
       .DATA_WIDTH (DATA_WIDTH)
    ) ch();
 
    // Internal values to track the transfer
-   DataMoverReq req;
+   logic [ADDR_WIDTH-1:0] addr;
+   logic [ADDR_WIDTH-1:0] len;
 
    // Buffer
    logic [DATA_WIDTH-1:0]   buffer [0:MAX_BURST_LENGTH-1];
@@ -47,11 +39,11 @@ module stream_nasti_mover # (
    // States
    enum {
       STATE_IDLE,
-      STATE_COMMAND,
       STATE_START,
       STATE_ADDRESS,
       STATE_WRITE,
-      STATE_RESP
+      STATE_RESP,
+      STATE_ACK
    } state;
 
    // Channel fire status
@@ -92,11 +84,7 @@ module stream_nasti_mover # (
    assign length_new = t_fire && src.t_keep ? length + 1 : length;
    assign ptr_new    = w_fire ? ptr + 1 : ptr;
 
-   // We are ready to start when we are in IDLE state
-   assign r_ready = state == STATE_IDLE;
-
-   // We can receive command when we are in COMMAND state
-   assign command.t_ready = state == STATE_COMMAND;
+   assign w_ready = state == STATE_ACK;
 
    always_ff @(posedge aclk or negedge aresetn) begin
       if (!aresetn) begin
@@ -106,154 +94,149 @@ module stream_nasti_mover # (
          dest.aw_valid <= 0;
          dest.w_valid  <= 0;
          dest.b_ready  <= 0;
-      end
-      else if (state == STATE_IDLE) begin
-         if (r_valid) begin
-            // IDLE state, r_ready is high
-            // Waiting for r_valid, then we'll start accepting command
-            if (r_valid) begin
-               state <= STATE_COMMAND;
+      end else case (state)
+         STATE_IDLE: begin
+            // IDLE state
+            // Waiting for w_valid, then we'll start actual DMA
+            // We will not set w_ready to high until we've finished the request
+            if (w_valid) begin
+               addr <= {w_addr[ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+               len  <= {w_len [ADDR_WIDTH-1:ADDR_SHIFT], {ADDR_SHIFT{1'b0}}};
+
+               last_burst       <= 0;
+               last_burst_delay <= 0;
+
+               // Clear buffer
+               length   <= 0;
+               ptr      <= 0;
+
+               state       <= STATE_START;
+               src.t_ready <= 1;
             end
          end
-      end else if (state == STATE_COMMAND) begin
-         // COMMAND state, command.t_ready is high
-         // Waiting for t_valid, then we'll start actual DMA
-         if (command.t_valid) begin
-            req <= command.t_data;
+         STATE_START: begin
+            if (t_fire || last_burst_delay || length == MAX_BURST_LENGTH) begin
+               // Data byte, write to buffer
+               if (t_fire && src.t_keep) begin
+                  assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
 
-            last_burst       <= 0;
-            last_burst_delay <= 0;
-
-            // Clear buffer
-            length   <= 0;
-            ptr      <= 0;
-
-            state       <= STATE_START;
-            src.t_ready <= 1;
-         end
-      end else begin
-         case (state)
-            STATE_START: begin
-               if (t_fire || last_burst_delay || length == MAX_BURST_LENGTH) begin
-                  // Data byte, write to buffer
-                  if (t_fire && src.t_keep) begin
-                     assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
-
-                     // Append to buffer
-                     buffer[length] <= src.t_data;
-                     strobe[length] <= src.t_strb;
-                  end
-
-                  if (last_burst_delay || t_fire && src.t_last) last_burst <= 1;
-
-                  if (length_new == MAX_BURST_LENGTH || length_new == req.length ||
-                      last_burst_delay || t_fire && src.t_last) begin
-                     // Stop receiving inputs
-                     src.t_ready <= 0;
-
-                     // Last null byte
-                     if (length_new == 0)
-                        state <= STATE_IDLE;
-                     else begin
-                        assert (length_new == MAX_BURST_LENGTH) else $warning("NASTI-Stream to NASTI Data Mover: Partial burst causes error in NASTI/TileLink converter");
-
-                        // Send a write request
-                        dest.aw_valid <= 1;
-                        dest.aw_addr  <= {req.addr, {ADDR_SHIFT{1'b0}}};
-                        dest.aw_len   <= length_new - 1;
-
-                        // Latch original length
-                        // and set length = 0
-                        // which will be used in write state
-                        length_latch  <= length_new;
-                        length        <= 0;
-
-                        // Update internal destination address
-                        req.addr     <= req.addr   + length_new;
-                        req.length   <= req.length - length_new;
-
-                        // Switch state, stop receiving more data from src.t
-                        state        <= STATE_ADDRESS;
-                     end
-                  end
-                  else
-                     length <= length_new;
+                  // Append to buffer
+                  buffer[length] <= src.t_data;
+                  strobe[length] <= src.t_strb;
                end
-            end
-            STATE_ADDRESS: begin
-               if (aw_fire) begin
-                  // Send first unit of data
-                  dest.w_valid  <= 1;
-                  dest.w_data   <= buffer[0];
-                  dest.w_strb   <= strobe[0];
-                  dest.w_last   <= length_latch == 1;
-                  ptr           <= 1;
 
-                  // Switch state
-                  state         <= STATE_WRITE;
-                  dest.aw_valid <= 0;
-                  src.t_ready   <= last_burst || req.length == 0 ? 0 : 1;
-               end
-            end
-            STATE_WRITE: begin
-               if (w_fire) begin
-                  // Finish writing all data
-                  if (ptr == length_latch) begin
-                     dest.w_valid <= 0;
-                     dest.b_ready <= 1;
-                     state        <= STATE_RESP;
-                  end
+               if (last_burst_delay || t_fire && src.t_last) last_burst <= 1;
+
+               if (length_new == MAX_BURST_LENGTH || length_new == (len >> ADDR_SHIFT) ||
+                   last_burst_delay || t_fire && src.t_last) begin
+                  // Stop receiving inputs
+                  src.t_ready <= 0;
+
+                  // Last null byte
+                  if (length_new == 0)
+                     state <= STATE_ACK;
                   else begin
-                     dest.w_data <= buffer[ptr];
-                     dest.w_strb <= strobe[ptr];
-                     dest.w_last <= ptr_new == length_latch;
-                     ptr         <= ptr_new;
+                     assert (length_new == MAX_BURST_LENGTH) else $warning("NASTI-Stream to NASTI Data Mover: Partial burst causes error in NASTI/TileLink converter");
+
+                     // Send a write request
+                     dest.aw_valid <= 1;
+                     dest.aw_addr  <= addr;
+                     dest.aw_len   <= length_new - 1;
+
+                     // Latch original length
+                     // and set length = 0
+                     // which will be used in write state
+                     length_latch  <= length_new;
+                     length        <= 0;
+
+                     // Update internal destination address
+                     addr          <= addr + (length_new << ADDR_SHIFT);
+                     len           <= len  - (length_new << ADDR_SHIFT);
+
+                     // Switch state, stop receiving more data from src.t
+                     state        <= STATE_ADDRESS;
                   end
                end
-
-               // Set t_ready if we are continuing in STATE_WRITE
-               // we have enough space, and when the package is not finished
-               if (t_fire && src.t_last || last_burst_delay || last_burst || req.length == 0)
-                  src.t_ready <= 0;
-               else if (w_fire && ptr == length_latch)
-                  src.t_ready <= 0;
                else
-                  src.t_ready <= length_new != ptr_new;
+                  length <= length_new;
+            end
+         end
+         STATE_ADDRESS: begin
+            if (aw_fire) begin
+               // Send first unit of data
+               dest.w_valid  <= 1;
+               dest.w_data   <= buffer[0];
+               dest.w_strb   <= strobe[0];
+               dest.w_last   <= length_latch == 1;
+               ptr           <= 1;
 
-               if (t_fire) begin
-                  if (src.t_keep) begin
-                     assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
-
-                     // Append to buffer
-                     buffer[length] <= src.t_data;
-                     strobe[length] <= src.t_strb;
-
-                     length <= length_new;
-                  end
-
-                  if (src.t_last) begin
-                     last_burst_delay <= 1;
-                  end
+               // Switch state
+               state         <= STATE_WRITE;
+               dest.aw_valid <= 0;
+               src.t_ready   <= last_burst || len == 0 ? 0 : 1;
+            end
+         end
+         STATE_WRITE: begin
+            if (w_fire) begin
+               // Finish writing all data
+               if (ptr == length_latch) begin
+                  dest.w_valid <= 0;
+                  dest.b_ready <= 1;
+                  state        <= STATE_RESP;
+               end
+               else begin
+                  dest.w_data <= buffer[ptr];
+                  dest.w_strb <= strobe[ptr];
+                  dest.w_last <= ptr_new == length_latch;
+                  ptr         <= ptr_new;
                end
             end
-            STATE_RESP: begin
-               if (b_fire) begin
-                  dest.b_ready <= 0;
-                  if (last_burst)
-                     state <= STATE_IDLE;
-                  else if (req.length == 0) begin
-                     state <= STATE_COMMAND;
-                  end else begin
-                     // Start next buffer-and-write cycle
-                     state       <= STATE_START;
-                     src.t_ready <= length != MAX_BURST_LENGTH && !last_burst_delay;
-                  end
+
+            // Set t_ready if we are continuing in STATE_WRITE
+            // we have enough space, and when the package is not finished
+            if (t_fire && src.t_last || last_burst_delay || last_burst || length_new == (len >> ADDR_SHIFT))
+               src.t_ready <= 0;
+            else if (w_fire && ptr == length_latch)
+               src.t_ready <= 0;
+            else
+               src.t_ready <= length_new != ptr_new;
+
+            if (t_fire) begin
+               if (src.t_keep) begin
+                  assert(&src.t_keep) else $error("NASTI-Stream to NASTI Data Mover: Mixed byte type not supported");
+
+                  // Append to buffer
+                  buffer[length] <= src.t_data;
+                  strobe[length] <= src.t_strb;
+
+                  length <= length_new;
+               end
+
+               if (src.t_last) begin
+                  last_burst_delay <= 1;
                end
             end
-            default:
-               assert(0) else $error("NASTI-Stream to NASTI Data Mover: Unexpected state");
-         endcase
-      end
+         end
+         STATE_RESP: begin
+            if (b_fire) begin
+               dest.b_ready <= 0;
+               if (last_burst || len == 0)
+                  state <= STATE_ACK;
+               else begin
+                  // Start next buffer-and-write cycle
+                  state       <= STATE_START;
+                  src.t_ready <= length != MAX_BURST_LENGTH && !last_burst_delay;
+               end
+            end
+         end
+         STATE_ACK: begin
+            assert(w_valid) else $error("NASTI-Stream to NASTI Data Mover: w_valid should be asserted high");
+
+            state <= STATE_IDLE;
+         end
+         default:
+            assert(0) else $error("NASTI-Stream to NASTI Data Mover: Unexpected state");
+      endcase
    end
 
 endmodule
