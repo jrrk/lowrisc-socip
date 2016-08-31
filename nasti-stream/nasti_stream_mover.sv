@@ -68,9 +68,6 @@ module nasti_stream_mover # (
    assign src.ar_qos    = 4'b0;
    assign src.ar_region = 4'b0;
    assign src.ar_user   = 0;
-   assign ch.t_id       = 0;
-   assign ch.t_dest     = 0;
-   assign ch.t_user     = 0;
 
    // Write channels, connect to zeros
    assign src.aw_id     = 0;
@@ -99,6 +96,7 @@ module nasti_stream_mover # (
    assign ch.t_valid = src.r_valid;
    assign ch.t_data  = src.r_data;
    assign ch.t_last  = last && len == 0 ? src.r_last : 0;
+   assign ch.t_id    = 0;
    assign ch.t_dest  = t_dest;
    assign ch.t_user  = t_user;
 
