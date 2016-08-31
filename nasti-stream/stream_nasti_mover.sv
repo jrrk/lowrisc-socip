@@ -19,11 +19,6 @@ module stream_nasti_mover # (
    localparam LEN_WIDTH     = ADDR_SHIFT + 16;
    localparam BUF_SHIFT     = $clog2(MAX_BURST_LENGTH);
 
-   // Internal channel connected to buffer
-   nasti_stream_channel # (
-      .DATA_WIDTH (DATA_WIDTH)
-   ) ch();
-
    // Internal values to track the transfer
    logic [ADDR_WIDTH-1:0] addr;
    logic [ADDR_WIDTH-1:0] len;

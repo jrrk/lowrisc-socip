@@ -32,7 +32,9 @@ module nasti_stream_mover # (
 
    // Internal channel connected to buffer
    nasti_stream_channel # (
-      .DATA_WIDTH (DATA_WIDTH)
+      .DATA_WIDTH (DATA_WIDTH),
+      .DEST_WIDTH (DEST_WIDTH),
+      .USER_WIDTH (USER_WIDTH)
    ) ch();
 
    // Internal values to track the transfer
@@ -46,6 +48,8 @@ module nasti_stream_mover # (
    // when buffer is empty to prevent deadlocks
    nasti_stream_buf # (
       .DATA_WIDTH (DATA_WIDTH),
+      .DEST_WIDTH (DEST_WIDTH),
+      .USER_WIDTH (USER_WIDTH),
       .BUF_SIZE (MAX_BURST_LENGTH)
    ) buffer (
       .aclk (aclk),
