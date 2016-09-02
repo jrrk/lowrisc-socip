@@ -48,6 +48,13 @@ module nasti_stream_crossbar # (
       .DEST_WIDTH(DEST_WIDTH),
       .USER_WIDTH(USER_WIDTH),
       .DATA_WIDTH(DATA_WIDTH)
+   ) i0(), i1(), i2(), i3(), i4(), i5(), i6(), i7();
+
+   nasti_stream_channel #(
+      .ID_WIDTH(ID_WIDTH),
+      .DEST_WIDTH(DEST_WIDTH),
+      .USER_WIDTH(USER_WIDTH),
+      .DATA_WIDTH(DATA_WIDTH)
    ) m0(), m1(), m2(), m3(), m4(), m5(), m6(), m7();
 
    nasti_stream_demux #(
@@ -63,16 +70,32 @@ module nasti_stream_crossbar # (
    demux6 (.aclk (aclk), .aresetn (aresetn), .master (m6), .slave (mx6)),
    demux7 (.aclk (aclk), .aresetn (aresetn), .master (m7), .slave (mx7));
 
+   nasti_stream_buf #(
+      .ID_WIDTH(ID_WIDTH),
+      .DEST_WIDTH(DEST_WIDTH),
+      .USER_WIDTH(USER_WIDTH),
+      .DATA_WIDTH(DATA_WIDTH),
+      .BUF_SIZE(1)
+   )
+   buf0 (.aclk (aclk), .aresetn (aresetn), .src (i0), .dest (m0)),
+   buf1 (.aclk (aclk), .aresetn (aresetn), .src (i1), .dest (m1)),
+   buf2 (.aclk (aclk), .aresetn (aresetn), .src (i2), .dest (m2)),
+   buf3 (.aclk (aclk), .aresetn (aresetn), .src (i3), .dest (m3)),
+   buf4 (.aclk (aclk), .aresetn (aresetn), .src (i4), .dest (m4)),
+   buf5 (.aclk (aclk), .aresetn (aresetn), .src (i5), .dest (m5)),
+   buf6 (.aclk (aclk), .aresetn (aresetn), .src (i6), .dest (m6)),
+   buf7 (.aclk (aclk), .aresetn (aresetn), .src (i7), .dest (m7));
+
    nasti_stream_slicer # (.N_PORT(N_MASTER)) slicer (
       .master(master),
-      .slave_0(m0),
-      .slave_1(m1),
-      .slave_2(m2),
-      .slave_3(m3),
-      .slave_4(m4),
-      .slave_5(m5),
-      .slave_6(m6),
-      .slave_7(m7));
+      .slave_0(i0),
+      .slave_1(i1),
+      .slave_2(i2),
+      .slave_3(i3),
+      .slave_4(i4),
+      .slave_5(i5),
+      .slave_6(i6),
+      .slave_7(i7));
 
    nasti_stream_channel #(
       .N_PORT (8),
