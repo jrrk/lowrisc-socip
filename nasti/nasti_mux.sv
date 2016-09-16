@@ -141,7 +141,13 @@ module nasti_mux
    // update write_vec
    always_ff @(posedge clk or negedge rstn)
      if(!rstn) begin
-        write_vec_valid <= 0;
+        int n;
+        for(n=0; n<W_MAX; n++)
+            begin
+              write_vec_valid[n] <= 1'b0;
+              write_vec_port[n] <= 3'b0;
+              write_vec_id[n] <= 3'b0;
+            end
      end else begin
         if(slave.aw_valid && slave.aw_ready) begin
            write_vec_id[write_wp] <= slave.aw_id;
@@ -206,7 +212,11 @@ module nasti_mux
      if(!rstn) begin
         int n;
         for(n=0; n<R_MAX; n++)
-          read_vec_valid[n] <= 1'b0;
+            begin
+              read_vec_valid[n] <= 1'b0;
+              read_vec_port[n] <= 3'b0;
+              read_vec_id[n] <= 3'b0;
+            end
      end else begin
         if(slave.ar_valid && slave.ar_ready) begin
            read_vec_id[read_wp] <= slave.ar_id;
